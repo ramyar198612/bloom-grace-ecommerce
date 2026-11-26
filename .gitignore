@@ -20,3 +20,8 @@
 .DS_Store
 .vscode/
 .idea/
+# Local database backup and Cloudinary migration files
+backend/cloudinary_before_migration.json
+backend/cloudinary_migration_manifest.json
+backend/cloudinary_migration_manifest.tmp
+backend/migrate_images_to_cloudinary.py
