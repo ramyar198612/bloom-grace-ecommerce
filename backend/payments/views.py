@@ -247,12 +247,15 @@ class VerifyPaymentAPIView(APIView):
                 'order_number': payment.order.order_number
             })
 
-        except razorpay.errors.SignatureVerificationError:
-            return Response(
-                {'error': 'Invalid payment signature.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
+        except razorpay.errors.SignatureVerificationError as error:
+         logger.error(
+        "Razorpay signature verification failed: %s",
+        str(error)
+    )
+         return Response(
+        {'error': 'Invalid payment signature.'},
+        status=status.HTTP_400_BAD_REQUEST
+    )
         except Exception:
             logger.exception('Payment verification failed.')
             return Response(
