@@ -255,8 +255,8 @@ class VerifyPaymentAPIView(APIView):
 
         try:
             client = get_razorpay_client()
-            logger.info("VERIFY ORDER ID: %s", razorpay_order_id)
-            logger.info("VERIFY PAYMENT ID: %s", razorpay_payment_id)
+            logger.warning("VERIFY ORDER ID: %s", razorpay_order_id)
+            logger.warning("VERIFY PAYMENT ID: %s", razorpay_payment_id)
             # Step 1: Verify Razorpay signature.
             client.utility.verify_payment_signature({
                 "razorpay_order_id": razorpay_order_id,
