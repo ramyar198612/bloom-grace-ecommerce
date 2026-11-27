@@ -16,6 +16,12 @@ class Order(models.Model):
         ('CANCELLED', 'Cancelled'),
     ]
 
+    PAYMENT_STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('PAID', 'Paid'),
+        ('FAILED', 'Failed'),
+    ]
+
     order_number = models.CharField(
         max_length=30,
         unique=True,
@@ -49,6 +55,12 @@ class Order(models.Model):
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
+        default='PENDING'
+    )
+
+    payment_status = models.CharField(
+        max_length=20,
+        choices=PAYMENT_STATUS_CHOICES,
         default='PENDING'
     )
 

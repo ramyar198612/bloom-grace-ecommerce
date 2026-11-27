@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
 import { useWebsite } from '../context/WebsiteContext';
+import { useCart } from '../context/CartContext';
 
 import Hero from '../components/Hero';
 import CategorySection from '../components/CategorySection';
@@ -10,16 +11,15 @@ import ProductSection from '../components/ProductSection';
 
 function Home() {
   const { websiteData } = useWebsite();
+  const { addToCart } = useCart();
 
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [search, setSearch] = useState('');
-  const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Load products and categories
   useEffect(() => {
     async function loadStore() {
       try {
@@ -54,14 +54,18 @@ function Home() {
     loadStore();
   }, []);
 
-  // Filter products
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
+      const productCategory =
+        typeof product.category === 'object'
+          ? String(product.category?.id)
+          : String(product.category);
+
       const matchesCategory =
         selectedCategory === 'all' ||
-        String(product.category) === selectedCategory;
+        productCategory === selectedCategory;
 
-      const matchesSearch = product.name
+      const matchesSearch = (product.name || '')
         .toLowerCase()
         .includes(search.toLowerCase());
 
@@ -69,28 +73,28 @@ function Home() {
     });
   }, [products, selectedCategory, search]);
 
-  // Get active homepage sections in admin-defined order
   const homeSections = useMemo(() => {
     return [...(websiteData?.home_sections || [])].sort(
       (a, b) => a.order - b.order
     );
   }, [websiteData]);
 
-  // Add product to cart (temporary local state)
   function handleAddToCart(product) {
-    setCart((previousCart) => [...previousCart, product]);
+    if (Number(product.stock) <= 0) {
+      alert('Sorry, this product is out of stock.');
+      return;
+    }
+
+    addToCart(product);
     alert(`${product.name} added to cart!`);
   }
 
   return (
-    <main className="min-h-screen bg-[#fffaf6] text-[#49352f]">
+    <main className="min-h-screen overflow-hidden bg-[#fffaf7] text-[#49352f]">
 
-      {/* Hero Section */}
       <Hero />
 
       {homeSections.map((section) => {
-
-        // Categories Section
         if (section.section_type === 'CATEGORIES') {
           return (
             <CategorySection
@@ -102,7 +106,6 @@ function Home() {
           );
         }
 
-        // Featured Products Section
         if (section.section_type === 'FEATURED_PRODUCTS') {
           return (
             <ProductSection
@@ -117,29 +120,28 @@ function Home() {
           );
         }
 
-        // Promotional Banner Section
         if (section.section_type === 'PROMOTIONAL_BANNER') {
           return (
             <section
               key={section.id}
-              className="mx-auto max-w-7xl px-6 py-16"
+              className="mx-auto max-w-7xl px-5 py-16 md:px-8 md:py-24"
             >
-              <div className="grid overflow-hidden rounded-3xl bg-[#f4e8e1] md:grid-cols-2">
+              <div className="grid overflow-hidden rounded-[2rem] bg-[#f3e5df] shadow-sm md:grid-cols-2">
 
-                <div className="flex flex-col items-start justify-center p-8 md:p-14">
+                <div className="flex flex-col items-start justify-center p-8 md:p-14 lg:p-16">
 
                   {section.subtitle && (
-                    <p className="mb-4 text-xs font-semibold tracking-[0.25em] text-[#a36e69]">
+                    <p className="mb-5 text-xs font-semibold uppercase tracking-[0.3em] text-[#a36e69]">
                       {section.subtitle}
                     </p>
                   )}
 
-                  <h2 className="font-serif text-3xl leading-tight md:text-5xl">
+                  <h2 className="max-w-xl font-serif text-3xl leading-tight text-[#49352f] md:text-5xl">
                     {section.title}
                   </h2>
 
                   {section.description && (
-                    <p className="mt-5 max-w-lg leading-7 text-[#806d63]">
+                    <p className="mt-6 max-w-lg text-sm leading-8 text-[#806d63] md:text-base">
                       {section.description}
                     </p>
                   )}
@@ -147,7 +149,7 @@ function Home() {
                   {section.button_text && (
                     <Link
                       to={section.button_url || '/shop'}
-                      className="mt-8 inline-flex items-center rounded-full bg-[#754b43] px-8 py-4 text-sm text-white transition hover:bg-[#9c6963]"
+                      className="mt-8 inline-flex items-center rounded-full bg-[#754b43] px-8 py-4 text-sm font-medium text-white transition duration-300 hover:-translate-y-1 hover:bg-[#9c6963]"
                     >
                       {section.button_text}
                     </Link>
@@ -156,11 +158,11 @@ function Home() {
                 </div>
 
                 {section.image && (
-                  <div className="min-h-[280px]">
+                  <div className="min-h-[300px] overflow-hidden md:min-h-[450px]">
                     <img
                       src={section.image}
                       alt={section.title}
-                      className="h-full min-h-[280px] w-full object-cover"
+                      className="h-full min-h-[300px] w-full object-cover transition duration-700 hover:scale-105 md:min-h-[450px]"
                     />
                   </div>
                 )}
@@ -170,64 +172,63 @@ function Home() {
           );
         }
 
-        // Testimonials Section
         if (section.section_type === 'TESTIMONIALS') {
           return (
             <section
               key={section.id}
-              className="bg-[#fffaf6] px-6 py-16"
+              className="bg-[#faf1ec] px-5 py-20 md:px-8 md:py-24"
             >
               <div className="mx-auto max-w-7xl">
 
-                <div className="mb-12 text-center">
+                <div className="mx-auto mb-14 max-w-2xl text-center">
 
                   {section.subtitle && (
-                    <p className="mb-3 text-xs font-semibold tracking-[0.25em] text-[#a36e69]">
+                    <p className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-[#a36e69]">
                       {section.subtitle}
                     </p>
                   )}
 
-                  <h2 className="font-serif text-3xl md:text-4xl">
+                  <h2 className="font-serif text-3xl text-[#49352f] md:text-5xl">
                     {section.title}
                   </h2>
 
                   {section.description && (
-                    <p className="mt-4 text-[#806d63]">
+                    <p className="mt-5 text-sm leading-8 text-[#806d63] md:text-base">
                       {section.description}
                     </p>
                   )}
 
                 </div>
 
-                <div className="grid gap-8 md:grid-cols-3">
+                <div className="grid gap-6 md:grid-cols-3">
 
                   {(websiteData?.testimonials || []).map((item) => (
                     <div
                       key={item.id}
-                      className="rounded-2xl border border-[#eee2d9] bg-white p-7 text-center shadow-sm"
+                      className="rounded-[1.5rem] border border-[#eee0d8] bg-white p-8 text-center shadow-sm transition duration-300 hover:-translate-y-2 hover:shadow-lg"
                     >
 
                       {item.customer_image ? (
                         <img
                           src={item.customer_image}
                           alt={item.customer_name}
-                          className="mx-auto mb-4 h-20 w-20 rounded-full object-cover"
+                          className="mx-auto mb-5 h-20 w-20 rounded-full object-cover ring-4 ring-[#f8eee9]"
                         />
                       ) : (
-                        <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-[#f4e8e1] font-serif text-2xl text-[#a36e69]">
+                        <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-[#f3e5df] font-serif text-2xl text-[#a36e69]">
                           {item.customer_name?.charAt(0)}
                         </div>
                       )}
 
-                      <p className="mb-3 text-lg text-[#b77979]">
+                      <p className="mb-4 text-xl tracking-widest text-[#c18b7c]">
                         {'★'.repeat(Number(item.rating) || 0)}
                       </p>
 
-                      <p className="leading-7 text-[#806d63]">
+                      <p className="text-sm leading-8 text-[#806d63]">
                         "{item.message}"
                       </p>
 
-                      <h3 className="mt-5 font-semibold text-[#49352f]">
+                      <h3 className="mt-6 font-semibold text-[#49352f]">
                         {item.customer_name}
                       </h3>
 

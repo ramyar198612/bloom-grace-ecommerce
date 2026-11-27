@@ -1,12 +1,24 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, ShoppingBag, SlidersHorizontal } from 'lucide-react';
+import {
+  Search,
+  ShoppingBag,
+  SlidersHorizontal,
+  Heart,
+} from 'lucide-react';
+
 import api from '../services/api';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
+import { useWishlist } from '../context/WishlistContext';
 
 function Shop() {
   const { addToCart } = useCart();
+  const { user } = useAuth();
+  const { addToWishlist, removeFromWishlist, isWishlisted, wishlistItems } =
+    useWishlist();
+
   const navigate = useNavigate();
 
   const [products, setProducts] = useState([]);
@@ -51,9 +63,14 @@ function Shop() {
 
   const filteredProducts = useMemo(() => {
     let result = products.filter((product) => {
+      const categoryId =
+        typeof product.category === 'object'
+          ? product.category?.id
+          : product.category;
+
       const matchesCategory =
         selectedCategory === 'all' ||
-        String(product.category) === String(selectedCategory);
+        String(categoryId) === String(selectedCategory);
 
       const matchesSearch =
         product.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -80,9 +97,35 @@ function Shop() {
     }
 
     addToCart(product, 1);
-
-    // Automatically open Cart page
     navigate('/cart');
+  };
+
+  const handleWishlist = async (product) => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    try {
+      const existingItem = wishlistItems.find(
+        (item) => Number(item.product) === Number(product.id)
+      );
+
+      if (existingItem) {
+        await removeFromWishlist(existingItem.id);
+        alert('Removed from your wishlist.');
+      } else {
+        await addToWishlist(product.id);
+        alert('Added to your wishlist.');
+      }
+    } catch (err) {
+      console.error('Wishlist error:', err);
+      alert(
+        err.response?.data?.detail ||
+        err.response?.data?.product?.[0] ||
+        'Unable to update wishlist. Please try again.'
+      );
+    }
   };
 
   return (
@@ -91,9 +134,11 @@ function Shop() {
         <p className="mb-3 text-xs tracking-[0.35em] text-[#a66b65]">
           BLOOM & GRACE COLLECTION
         </p>
+
         <h1 className="font-serif text-4xl text-[#49352f] md:text-5xl">
           Shop Our Collection
         </h1>
+
         <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-[#806b63]">
           Discover beautiful artificial flowers and elegant hair accessories
           for your special moments.
@@ -106,6 +151,7 @@ function Shop() {
             <h2 className="font-serif text-2xl text-[#49352f]">
               Our Products
             </h2>
+
             <p className="mt-1 text-sm text-[#927d73]">
               {filteredProducts.length} products available
             </p>
@@ -113,7 +159,8 @@ function Shop() {
 
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="flex items-center gap-2 rounded-full border border-[#eadbd5] bg-white px-4 py-3 sm:w-64">
-              <Search size={17} className="text-[#a88b80]" />
+              <Search size={17} className="text-[#a88b80}" />
+
               <input
                 type="text"
                 placeholder="Search products..."
@@ -125,6 +172,7 @@ function Shop() {
 
             <div className="flex items-center gap-2 rounded-full border border-[#eadbd5] bg-white px-4 py-3">
               <SlidersHorizontal size={17} className="text-[#a88b80]" />
+
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
@@ -177,68 +225,92 @@ function Shop() {
             <p className="font-serif text-2xl text-[#49352f]">
               No products found
             </p>
+
             <p className="mt-2 text-sm text-[#927d73]">
               Try another search or category.
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filteredProducts.map((product) => (
-              <article
-                key={product.id}
-                className="group overflow-hidden rounded-2xl border border-[#f0e5df] bg-white transition duration-300 hover:-translate-y-1 hover:shadow-xl"
-              >
-                <Link
-                  to={`/products/${product.id}`}
-                  className="relative block aspect-[4/5] overflow-hidden bg-[#f7efeb]"
+            {filteredProducts.map((product) => {
+              const saved = isWishlisted(product.id);
+
+              return (
+                <article
+                  key={product.id}
+                  className="group overflow-hidden rounded-2xl border border-[#f0e5df] bg-white transition duration-300 hover:-translate-y-1 hover:shadow-xl"
                 >
-                  {product.image ? (
-                    <img
-                      src={product.image}
-                      alt={product.name}
-                      className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-[#b89b90]">
-                      <ShoppingBag size={42} />
-                    </div>
-                  )}
-                </Link>
-
-                <div className="p-5">
-                  <p className="mb-2 text-xs uppercase tracking-wider text-[#a66b65]">
-                    {product.category_name || 'Bloom & Grace'}
-                  </p>
-
-                  <Link to={`/products/${product.id}`}>
-                    <h3 className="font-serif text-lg text-[#49352f] hover:text-[#a66b65]">
-                      {product.name}
-                    </h3>
-                  </Link>
-
-                  <div className="mt-3 flex items-center gap-3">
-                    <span className="text-lg font-semibold text-[#49352f]">
-                      ₹{Number(product.price).toFixed(2)}
-                    </span>
-
-                    {product.original_price &&
-                      Number(product.original_price) > Number(product.price) && (
-                        <span className="text-sm text-gray-400 line-through">
-                          ₹{Number(product.original_price).toFixed(2)}
-                        </span>
+                  <div className="relative aspect-[4/5] overflow-hidden bg-[#f7efeb]">
+                    <Link
+                      to={`/products/${product.id}`}
+                      className="block h-full w-full"
+                    >
+                      {product.image ? (
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-[#b89b90]">
+                          <ShoppingBag size={42} />
+                        </div>
                       )}
+                    </Link>
+
+                    <button
+                      type="button"
+                      onClick={() => handleWishlist(product)}
+                      aria-label={
+                        saved ? 'Remove from wishlist' : 'Add to wishlist'
+                      }
+                      title={
+                        saved ? 'Remove from Wishlist' : 'Add to Wishlist'
+                      }
+                      className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-[#a66b65] shadow-md transition hover:scale-110 hover:bg-[#a66b65] hover:text-white"
+                    >
+                      <Heart
+                        size={20}
+                        fill={saved ? 'currentColor' : 'none'}
+                      />
+                    </button>
                   </div>
 
-                  <button
-                    onClick={() => handleAddToCart(product)}
-                    disabled={Number(product.stock) <= 0}
-                    className="mt-5 w-full rounded-full bg-[#a66b65] px-4 py-3 text-sm text-white transition hover:bg-[#87534e] disabled:cursor-not-allowed disabled:bg-gray-400"
-                  >
-                    {Number(product.stock) <= 0 ? 'Out of Stock' : 'Add to Cart'}
-                  </button>
-                </div>
-              </article>
-            ))}
+                  <div className="p-5">
+                    <p className="mb-2 text-xs uppercase tracking-wider text-[#a66b65]">
+                      {product.category_name || 'Bloom & Grace'}
+                    </p>
+
+                    <Link to={`/products/${product.id}`}>
+                      <h3 className="font-serif text-lg text-[#49352f] hover:text-[#a66b65]">
+                        {product.name}
+                      </h3>
+                    </Link>
+
+                    <div className="mt-3 flex items-center gap-3">
+                      <span className="text-lg font-semibold text-[#49352f]">
+                        ₹{Number(product.price).toFixed(2)}
+                      </span>
+
+                      {product.original_price &&
+                        Number(product.original_price) > Number(product.price) && (
+                          <span className="text-sm text-gray-400 line-through">
+                            ₹{Number(product.original_price).toFixed(2)}
+                          </span>
+                        )}
+                    </div>
+
+                    <button
+                      onClick={() => handleAddToCart(product)}
+                      disabled={Number(product.stock) <= 0}
+                      className="mt-5 w-full rounded-full bg-[#a66b65] px-4 py-3 text-sm text-white transition hover:bg-[#87534e] disabled:cursor-not-allowed disabled:bg-gray-400"
+                    >
+                      {Number(product.stock) <= 0 ? 'Out of Stock' : 'Add to Cart'}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>

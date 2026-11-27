@@ -6,6 +6,23 @@ import { ShoppingBag, ArrowLeft, MapPin } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import api from '../services/api';
 
+function loadRazorpayScript() {
+  return new Promise((resolve) => {
+    if (window.Razorpay) {
+      resolve(true);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+
+    document.body.appendChild(script);
+  });
+}
+
 function Checkout() {
   const {
     cartItems,
@@ -50,6 +67,7 @@ function Checkout() {
     setSubmitError('');
 
     try {
+      // Step 1: Create the order in Django backend.
       const orderData = {
         ...formData,
         items: cartItems.map((item) => ({
@@ -58,31 +76,139 @@ function Checkout() {
         })),
       };
 
-      const response = await api.post('/orders/', orderData);
+      const orderResponse = await api.post('/orders/', orderData);
+      const orderNumber = orderResponse.data.order_number;
 
-      clearCart();
+      if (!orderNumber) {
+        throw new Error('Order number was not returned by the server.');
+      }
 
-      navigate(
-        `/order-success/${response.data.order_number}`
+      // Step 2: Load Razorpay Checkout.
+      const scriptLoaded = await loadRazorpayScript();
+
+      if (!scriptLoaded) {
+        throw new Error('Unable to load Razorpay. Please check your internet connection.');
+      }
+
+      // Step 3: Create Razorpay payment order.
+      const paymentResponse = await api.post(
+        '/payments/create-order/',
+        {
+          order_number: orderNumber,
+        }
       );
+
+      const paymentData = paymentResponse.data;
+
+      if (!paymentData.key_id || !paymentData.razorpay_order_id) {
+        throw new Error('Invalid Razorpay payment details.');
+      }
+
+      // Step 4: Open Razorpay Checkout.
+      const options = {
+        key: paymentData.key_id,
+        amount: paymentData.amount,
+        currency: paymentData.currency,
+        name: 'Bloom & Grace',
+        description: 'Order Payment',
+        order_id: paymentData.razorpay_order_id,
+
+        prefill: {
+          name: paymentData.customer_name,
+          email: paymentData.customer_email,
+          contact: paymentData.customer_phone,
+        },
+
+        theme: {
+          color: '#a66b65',
+        },
+
+        handler: async function (razorpayResponse) {
+          try {
+            setSubmitting(true);
+            setSubmitError('');
+
+            // Step 5: Verify payment on Django backend.
+            const verifyResponse = await api.post(
+              '/payments/verify/',
+              {
+                razorpay_order_id:
+                  razorpayResponse.razorpay_order_id,
+
+                razorpay_payment_id:
+                  razorpayResponse.razorpay_payment_id,
+
+                razorpay_signature:
+                  razorpayResponse.razorpay_signature,
+              }
+            );
+
+            if (!verifyResponse.data.success) {
+              throw new Error('Payment verification failed.');
+            }
+
+            // Clear cart only after successful verification.
+            clearCart();
+
+            navigate(`/order-success/${orderNumber}`);
+
+          } catch (verificationError) {
+            console.error(
+              'Payment verification error:',
+              verificationError.response?.data ||
+              verificationError.message
+            );
+
+            setSubmitError(
+              verificationError.response?.data?.error ||
+              'Payment was received, but verification failed. Please contact support with your order number: ' +
+              orderNumber
+            );
+          } finally {
+            setSubmitting(false);
+          }
+        },
+
+        modal: {
+          ondismiss: function () {
+            setSubmitting(false);
+            setSubmitError(
+              'Payment was cancelled or the payment window was closed. Your order is still pending.'
+            );
+          },
+        },
+      };
+
+      const razorpay = new window.Razorpay(options);
+
+      razorpay.on('payment.failed', function (response) {
+        setSubmitting(false);
+
+        setSubmitError(
+          response.error?.description ||
+          'Payment failed. Please try again.'
+        );
+      });
+
+      razorpay.open();
 
     } catch (error) {
       console.error(
-        'Order creation failed:',
+        'Checkout failed:',
         error.response?.data || error.message
       );
 
       const errorData = error.response?.data;
 
       setSubmitError(
-        typeof errorData === 'string'
+        errorData?.error ||
+        (typeof errorData === 'string'
           ? errorData
           : errorData
             ? JSON.stringify(errorData)
-            : 'Unable to place your order. Please try again.'
+            : error.message || 'Unable to continue. Please try again.')
       );
 
-    } finally {
       setSubmitting(false);
     }
   };
@@ -166,7 +292,6 @@ function Checkout() {
 
               <div className="grid gap-5 sm:grid-cols-2">
 
-                {/* Full Name */}
                 <div className="sm:col-span-2">
                   <label className="mb-2 block text-sm text-[#49352f]">
                     Full Name *
@@ -183,7 +308,6 @@ function Checkout() {
                   />
                 </div>
 
-                {/* Email */}
                 <div>
                   <label className="mb-2 block text-sm text-[#49352f]">
                     Email Address *
@@ -200,7 +324,6 @@ function Checkout() {
                   />
                 </div>
 
-                {/* Phone */}
                 <div>
                   <label className="mb-2 block text-sm text-[#49352f]">
                     Phone Number *
@@ -219,7 +342,6 @@ function Checkout() {
                   />
                 </div>
 
-                {/* Address */}
                 <div className="sm:col-span-2">
                   <label className="mb-2 block text-sm text-[#49352f]">
                     Delivery Address *
@@ -236,7 +358,6 @@ function Checkout() {
                   />
                 </div>
 
-                {/* City */}
                 <div>
                   <label className="mb-2 block text-sm text-[#49352f]">
                     City *
@@ -253,7 +374,6 @@ function Checkout() {
                   />
                 </div>
 
-                {/* State */}
                 <div>
                   <label className="mb-2 block text-sm text-[#49352f]">
                     State *
@@ -270,7 +390,6 @@ function Checkout() {
                   />
                 </div>
 
-                {/* PIN Code */}
                 <div>
                   <label className="mb-2 block text-sm text-[#49352f]">
                     PIN Code *
@@ -367,24 +486,22 @@ function Checkout() {
                 </span>
               </div>
 
-              {/* API Error */}
               {submitError && (
                 <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">
                   {submitError}
                 </p>
               )}
 
-              {/* Place Order */}
               <button
                 type="submit"
                 disabled={submitting}
                 className="mt-7 w-full rounded-full bg-[#a66b65] px-6 py-4 text-sm text-white transition hover:bg-[#87534e] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {submitting ? 'Placing Order...' : 'Place Order'}
+                {submitting ? 'Processing...' : 'Proceed to Payment'}
               </button>
 
               <p className="mt-4 text-center text-xs leading-6 text-[#927d73]">
-                Please check your delivery information before continuing.
+                Secure payment powered by Razorpay Test Mode.
               </p>
 
             </aside>
