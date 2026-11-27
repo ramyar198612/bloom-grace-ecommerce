@@ -261,6 +261,13 @@ class VerifyPaymentAPIView(APIView):
             })
 
         try:
+            logger.warning(
+             "RENDER SECRET FINGERPRINT: %s",
+             hashlib.sha256(
+            settings.RAZORPAY_KEY_SECRET.encode()
+            ).hexdigest()[:16]
+            )
+            
             client = get_razorpay_client()
 
             logger.warning(
