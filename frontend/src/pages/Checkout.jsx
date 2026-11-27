@@ -67,7 +67,7 @@ function Checkout() {
     setSubmitError('');
 
     try {
-      // Step 1: Create the order in Django backend.
+      // Step 1: Create order in Django backend.
       const orderData = {
         ...formData,
         items: cartItems.map((item) => ({
@@ -83,11 +83,15 @@ function Checkout() {
         throw new Error('Order number was not returned by the server.');
       }
 
+      console.log('ORDER CREATED:', orderNumber);
+
       // Step 2: Load Razorpay Checkout.
       const scriptLoaded = await loadRazorpayScript();
 
       if (!scriptLoaded) {
-        throw new Error('Unable to load Razorpay. Please check your internet connection.');
+        throw new Error(
+          'Unable to load Razorpay. Please check your internet connection.'
+        );
       }
 
       // Step 3: Create Razorpay payment order.
@@ -103,6 +107,13 @@ function Checkout() {
       if (!paymentData.key_id || !paymentData.razorpay_order_id) {
         throw new Error('Invalid Razorpay payment details.');
       }
+
+      console.log('RAZORPAY ORDER CREATED:', {
+        order_number: orderNumber,
+        razorpay_order_id: paymentData.razorpay_order_id,
+        amount: paymentData.amount,
+        currency: paymentData.currency,
+      });
 
       // Step 4: Open Razorpay Checkout.
       const options = {
@@ -124,9 +135,32 @@ function Checkout() {
         },
 
         handler: async function (razorpayResponse) {
+          console.log('RAZORPAY HANDLER STARTED');
+
+          console.log('RAZORPAY RESPONSE:', {
+            order_id: razorpayResponse.razorpay_order_id,
+            payment_id: razorpayResponse.razorpay_payment_id,
+            has_signature: Boolean(
+              razorpayResponse.razorpay_signature
+            ),
+          });
+
           try {
             setSubmitting(true);
             setSubmitError('');
+
+            // Check that Razorpay returned all required values.
+            if (
+              !razorpayResponse.razorpay_order_id ||
+              !razorpayResponse.razorpay_payment_id ||
+              !razorpayResponse.razorpay_signature
+            ) {
+              throw new Error(
+                'Razorpay did not return all required verification details.'
+              );
+            }
+
+            console.log('SENDING PAYMENT VERIFICATION REQUEST');
 
             // Step 5: Verify payment on Django backend.
             const verifyResponse = await api.post(
@@ -143,9 +177,17 @@ function Checkout() {
               }
             );
 
+            console.log(
+              'PAYMENT VERIFICATION RESPONSE:',
+              verifyResponse.status,
+              verifyResponse.data
+            );
+
             if (!verifyResponse.data.success) {
               throw new Error('Payment verification failed.');
             }
+
+            console.log('PAYMENT VERIFIED SUCCESSFULLY');
 
             // Clear cart only after successful verification.
             clearCart();
@@ -164,6 +206,7 @@ function Checkout() {
               'Payment was received, but verification failed. Please contact support with your order number: ' +
               orderNumber
             );
+
           } finally {
             setSubmitting(false);
           }
@@ -172,6 +215,7 @@ function Checkout() {
         modal: {
           ondismiss: function () {
             setSubmitting(false);
+
             setSubmitError(
               'Payment was cancelled or the payment window was closed. Your order is still pending.'
             );
@@ -182,6 +226,11 @@ function Checkout() {
       const razorpay = new window.Razorpay(options);
 
       razorpay.on('payment.failed', function (response) {
+        console.error(
+          'RAZORPAY PAYMENT FAILED:',
+          response.error?.description
+        );
+
         setSubmitting(false);
 
         setSubmitError(
