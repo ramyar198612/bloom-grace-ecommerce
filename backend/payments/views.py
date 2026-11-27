@@ -13,7 +13,7 @@ from rest_framework.permissions import AllowAny
 
 from orders.models import Order
 from .models import Payment
-
+import hashlib
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +135,13 @@ class CreatePaymentOrderAPIView(APIView):
             )
 
         try:
+
+            logger.warning(
+            "RENDER SECRET FINGERPRINT: %s",
+             hashlib.sha256(
+            settings.RAZORPAY_KEY_SECRET.encode()
+             ).hexdigest()[:16]
+            )
             client = get_razorpay_client()
 
             payment, created = Payment.objects.get_or_create(
@@ -255,12 +262,14 @@ class VerifyPaymentAPIView(APIView):
 
         try:
             client = get_razorpay_client()
+
             logger.warning(
             "RAZORPAY VERIFY KEY ID: %s",
             settings.RAZORPAY_KEY_ID
-        )
+            )
             logger.warning("VERIFY ORDER ID: %s", razorpay_order_id)
             logger.warning("VERIFY PAYMENT ID: %s", razorpay_payment_id)
+
             # Step 1: Verify Razorpay signature.
             client.utility.verify_payment_signature({
                 "razorpay_order_id": razorpay_order_id,
